@@ -12,6 +12,26 @@ REQUIRED_MANIFEST_FIELDS = ["name", "version", "description", "author"]
 SEMVER_RE = r"^\d+\.\d+\.\d+$"
 PLUGIN_NAME = "claude-workflow"
 
+EXPECTED_SKILLS = [
+    "sprint-workflow",
+    "audit-cycle",
+    "task-tracking",
+    "docs-sync",
+    "git-commits",
+    "testing-rules",
+    "testing-django",
+]
+
+EXPECTED_AGENTS = [
+    "spec-pm",
+    "architect",
+    "planner",
+    "implementer",
+    "reviewer",
+    "researcher",
+    "test-runner",
+]
+
 
 def _load_manifest() -> dict:
     with MANIFEST_PATH.open(encoding="utf-8") as f:
@@ -68,3 +88,16 @@ def test_marketplace_references_plugin_name():
     assert plugins[0]["name"] == PLUGIN_NAME, (
         f"plugin entry name {plugins[0]['name']!r} != {PLUGIN_NAME!r}"
     )
+
+
+def test_declared_skills_exist_on_disk():
+    for name in EXPECTED_SKILLS:
+        skill_dir = PLUGIN_ROOT / "skills" / name
+        assert skill_dir.is_dir(), f"skill directory missing: {skill_dir}"
+        assert (skill_dir / "SKILL.md").is_file(), f"SKILL.md missing in {skill_dir}"
+
+
+def test_declared_agents_exist_on_disk():
+    for name in EXPECTED_AGENTS:
+        agent_file = PLUGIN_ROOT / "agents" / f"{name}.md"
+        assert agent_file.is_file(), f"agent file missing: {agent_file}"

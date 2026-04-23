@@ -19,6 +19,18 @@ For trivial changes (1-3 files, files already in main context) the main session 
 
 ## Process
 
+### Step 0 — Stack detection
+
+Прежде чем начать работу, прочитай `CLAUDE.md` проекта и извлеки секцию `## Stack`.
+
+Для каждого элемента стека (backend, database, frontend, map, queue):
+1. Проверь есть ли в плагине `skills/coding-<element>/SKILL.md` — подгрузи если есть
+2. Проверь есть ли `skills/testing-<element>/SKILL.md` — подгрузи если есть
+3. Если чего-то нет — fallback: использовать только coding-rules / testing-rules
+4. В output отметить одним предложением: "Stack loaded: django, postgis. Missing: maplibre (fallback to rules)."
+
+Skills coding-rules и testing-rules — ВСЕГДА загружаются, независимо от стека.
+
 ### Step 1 — Understand the scope
 
 1. Read the relevant step from `.project-state/<task-slug>/03-plan.md`. The parent will tell you WHICH step — if not, ask.

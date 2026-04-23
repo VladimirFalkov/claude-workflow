@@ -1,0 +1,13 @@
+{
+  "name": "claude-workflow-local",
+  "owner": {
+    "name": "Vladimir"
+  },
+  "plugins": [
+    {
+      "name": "claude-workflow",
+      "source": ".",
+      "description": "Sprint-based development workflow plugin"
+    }
+  ]
+}

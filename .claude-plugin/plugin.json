@@ -1,0 +1,17 @@
+{
+  "name": "claude-workflow",
+  "version": "0.1.0",
+  "description": "Sprint-based development workflow for Python projects (Django/FastAPI). Greenfield and brownfield modes. Stack-aware skill loading via CLAUDE.md declaration.",
+  "author": {
+    "name": "Vladimir",
+    "url": "https://github.com/VladimirFalkov/claude-workflow"
+  },
+  "keywords": [
+    "workflow",
+    "tdd",
+    "sprint",
+    "django",
+    "fastapi",
+    "code-review"
+  ]
+}

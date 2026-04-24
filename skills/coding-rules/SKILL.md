@@ -140,11 +140,123 @@ payload = {"timestamp": dt.isoformat()}    # "2026-04-24T10:30:00+00:00"
 
 ### 3. Деньги и числа с финансовым смыслом
 
-_(заполняется в шаге 3)_
+#### `Decimal`, не `float` для денег
+
+`float` имеет бинарное представление — `0.1 + 0.2 != 0.3`. Для сумм, курсов,
+процентов это означает накапливающиеся ошибки округления, видимые в итогах.
+
+ПЛОХО:
+```python
+price = 9.99
+tax = 0.20
+total = price * (1 + tax)      # 11.988000000000001 — не то
+```
+
+ХОРОШО:
+```python
+from decimal import Decimal
+
+price = Decimal("9.99")
+tax = Decimal("0.20")
+total = price * (1 + tax)      # Decimal("11.988") — точно
+```
+
+#### `Decimal("0.1")`, не `Decimal(0.1)`
+
+`Decimal(0.1)` создаёт Decimal из float — наследует ошибку бинарного представления.
+`Decimal("0.1")` — из строки, точно.
+
+ПЛОХО:
+```python
+Decimal(0.1)    # Decimal('0.1000000000000000055511151231257827021181583404541015625')
+```
+
+ХОРОШО:
+```python
+Decimal("0.1")  # Decimal('0.1')
+```
+
+#### Явный `quantize()` при округлении
+
+Никаких `round()` для денег — `quantize()` с явным режимом округления.
+
+ПЛОХО:
+```python
+result = round(total, 2)            # встроенный round — banker's rounding
+```
+
+ХОРОШО:
+```python
+from decimal import Decimal, ROUND_HALF_UP
+
+result = total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+```
+
+---
 
 ### 4. Пути и файлы
 
-_(заполняется в шаге 3)_
+#### `pathlib.Path` вместо `os.path` и строкового concat
+
+`os.path.join(base, "subdir", "file.txt")` громоздко и платформо-зависимо
+в крайних случаях. `pathlib` — читаемо, безопасно, поддерживает `/` оператор.
+
+ПЛОХО:
+```python
+import os
+
+config_path = os.path.join(os.path.dirname(__file__), "config", "settings.ini")
+full_path = base_dir + "/" + "uploads" + "/" + filename   # хрупко
+```
+
+ХОРОШО:
+```python
+from pathlib import Path
+
+config_path = Path(__file__).parent / "config" / "settings.ini"
+full_path = base_dir / "uploads" / filename
+```
+
+#### Явный `encoding` при открытии файлов
+
+Без явного `encoding` поведение зависит от локали ОС — тихо ломается на
+серверах с нестандартной локалью или при переносе между платформами.
+
+ПЛОХО:
+```python
+with open("report.txt", "w") as f:     # кодировка — что получится
+    f.write(content)
+```
+
+ХОРОШО:
+```python
+from pathlib import Path
+
+Path("report.txt").write_text(content, encoding="utf-8")
+
+# или стандартный open с явным encoding:
+with open("report.txt", "w", encoding="utf-8") as f:
+    f.write(content)
+```
+
+#### Запрет hardcoded абсолютных путей в коде
+
+Абсолютный путь в коде — это путь к машине разработчика, не к production.
+
+ПЛОХО:
+```python
+DATA_DIR = "/Users/vladimir/projects/myapp/data"    # только на одной машине
+LOG_FILE = "/var/log/myapp/app.log"                 # hardcoded prod-путь
+```
+
+ХОРОШО:
+```python
+import os
+from pathlib import Path
+
+DATA_DIR = Path(os.environ["DATA_DIR"])             # из env — fail-fast если нет
+LOG_FILE = Path(__file__).parent.parent / "logs" / "app.log"  # относительный
+```
 
 ### 5. Обработка ошибок
 

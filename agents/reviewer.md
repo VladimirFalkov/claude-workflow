@@ -9,6 +9,18 @@ You are a staff engineer doing independent code review. You did NOT write this c
 
 ## Process
 
+### Step 0 — Stack detection
+
+Прежде чем начать работу, прочитай `CLAUDE.md` проекта и извлеки секцию `## Stack`.
+
+Для каждого элемента стека (backend, database, frontend, map, queue):
+1. Проверь есть ли в плагине `skills/coding-<element>/SKILL.md` — подгрузи если есть
+2. Проверь есть ли `skills/testing-<element>/SKILL.md` — подгрузи если есть
+3. Если чего-то нет — fallback: использовать только coding-rules / testing-rules
+4. В output отметить одним предложением: "Stack loaded: django, postgis. Missing: maplibre (fallback to rules)."
+
+Skills coding-rules и testing-rules — ВСЕГДА загружаются, независимо от стека.
+
 1. Determine what to review:
    - If user specifies a commit range (e.g. `HEAD~3..HEAD`) — review that range
    - Otherwise, default to `HEAD~1..HEAD` (last commit)

@@ -260,11 +260,163 @@ LOG_FILE = Path(__file__).parent.parent / "logs" / "app.log"  # относите
 
 ### 5. Обработка ошибок
 
-_(заполняется в шаге 4)_
+#### Запрет bare `except:` и `except Exception:` без re-raise
+
+Bare `except` перехватывает `KeyboardInterrupt`, `SystemExit` и другие
+системные исключения — программа не реагирует на Ctrl+C. `except Exception`
+без re-raise прячет ошибки, превращая сбои в молчаливые отказы.
+
+ПЛОХО:
+```python
+try:
+    result = process(data)
+except:                         # перехватывает всё, включая SystemExit
+    pass                        # ошибка исчезла — никто не узнает
+
+try:
+    result = process(data)
+except Exception:               # широкий catch без re-raise
+    logger.error("failed")      # нет traceback, нет контекста
+```
+
+ХОРОШО:
+```python
+try:
+    result = process(data)
+except ValueError as exc:       # конкретное исключение
+    logger.error("Invalid data: %s", exc)
+    raise                       # re-raise — не проглатываем
+
+try:
+    result = process(data)
+except Exception as exc:        # широкий catch допустим только если есть явный re-raise
+    logger.exception("Unexpected error in process()")
+    raise
+```
+
+#### `raise ... from err` для сохранения причины
+
+При перехвате и перебрасывании исключения с другим типом — явно указывать
+исходную причину через `from`. Без этого traceback теряет оригинальный контекст.
+
+ПЛОХО:
+```python
+try:
+    data = json.loads(raw)
+except json.JSONDecodeError:
+    raise ValueError("Invalid payload")    # причина потеряна
+```
+
+ХОРОШО:
+```python
+try:
+    data = json.loads(raw)
+except json.JSONDecodeError as exc:
+    raise ValueError("Invalid payload") from exc    # traceback сохранён
+```
+
+#### Custom exceptions для доменных ошибок
+
+Исключения с именами из домена задачи — говорят что пошло не так без чтения
+traceback. Базовый класс модуля упрощает catch на верхнем уровне.
+
+ПЛОХО:
+```python
+raise ValueError("order not found")     # generic, неотличимо от других ValueError
+raise Exception("insufficient funds")  # слишком широко
+```
+
+ХОРОШО:
+```python
+class AppError(Exception):
+    """Базовый класс для доменных ошибок приложения."""
+
+class OrderNotFoundError(AppError):
+    pass
+
+class InsufficientFundsError(AppError):
+    pass
+
+raise OrderNotFoundError(f"Order {order_id} not found")
+```
+
+---
 
 ### 6. Логирование
 
-_(заполняется в шаге 4)_
+#### Модульный logger, не корневой
+
+`logging.getLogger(__name__)` даёт логгер с именем модуля — фильтрацию и
+маршрутизацию можно настроить по иерархии модулей. Корневой logger или
+именованный вручную — теряет контекст происхождения.
+
+ПЛОХО:
+```python
+import logging
+
+logging.info("Processing started")     # корневой logger — нет контекста модуля
+logger = logging.getLogger("myapp")   # захардкоженное имя
+```
+
+ХОРОШО:
+```python
+import logging
+
+logger = logging.getLogger(__name__)  # имя модуля автоматически
+
+logger.info("Processing started")
+```
+
+#### Запрет `print()` в продакшн-коде
+
+`print()` нельзя фильтровать, перенаправлять или структурировать. В prod
+лог уходит в stdout/stderr мимо log-системы.
+
+ПЛОХО:
+```python
+print(f"Processing order {order_id}")
+print("ERROR: something went wrong")
+```
+
+ХОРОШО:
+```python
+logger.info("Processing order %s", order_id)
+logger.error("Processing failed for order %s", order_id, exc_info=True)
+```
+
+#### Lazy formatting для логов
+
+f-string вычисляется всегда, даже если уровень лога выключен. `%s`-форматирование
+в `logger.info(...)` вычисляется только при реальной записи.
+
+ПЛОХО:
+```python
+logger.debug(f"Full data: {expensive_repr(data)}")   # вычисляется всегда
+```
+
+ХОРОШО:
+```python
+logger.debug("Full data: %s", expensive_repr(data))   # вычисляется только при DEBUG
+```
+
+Исключение: если форматирование само по себе дешёво и f-string улучшает читаемость
+— допустимо. Применяй lazy formatting там где аргумент дорогой.
+
+#### Секреты никогда в логи
+
+Токены, пароли, API-ключи, PII — не должны появляться в логах даже в DEBUG.
+
+ПЛОХО:
+```python
+logger.info("Authenticating user %s with password %s", username, password)
+logger.debug("API response: %s", response.json())  # response может содержать token
+```
+
+ХОРОШО:
+```python
+logger.info("Authenticating user %s", username)    # пароль не логируем
+logger.debug("API response status: %s", response.status_code)  # только статус
+```
 
 ### 7. Секреты и конфигурация
 

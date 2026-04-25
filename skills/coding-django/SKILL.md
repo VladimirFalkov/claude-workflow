@@ -334,11 +334,96 @@ def cancel_order(order: Order, cancelled_by) -> Order:
 
 ### 5. Views
 
-_(заполняется в шаге 5)_
+#### CBV предпочтительнее FBV для CRUD
+
+CBV (`CreateView`, `UpdateView`, `ListView`) устраняет boilerplate и даёт
+стандартный lifecycle (get/post/form_valid). FBV допустим для одноразовой
+логики без стандартного CRUD.
+
+ХОРОШО:
+```python
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.views.generic import CreateView
+from django.urls import reverse_lazy
+
+class OrderCreateView(LoginRequiredMixin, CreateView):
+    model = Order
+    form_class = OrderCreateForm
+    template_name = "orders/order_form.html"
+    success_url = reverse_lazy("orders:list")
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["company"] = self.request.user.company   # tenant через kwargs
+        return kwargs
+
+    def form_valid(self, form):
+        # form_valid — тонкий: только вызов service
+        try:
+            create_order(
+                company=self.request.user.company,
+                user=self.request.user,
+                **form.cleaned_data,
+            )
+        except ValidationError as exc:
+            form.add_error(None, exc)
+            return self.form_invalid(form)
+        return super().form_valid(form)
+```
+
+---
 
 ### 6. Forms
 
-_(заполняется в шаге 5)_
+#### `company_fk` / `user_fk` — никогда из `request.POST`
+
+Ownership-поля в `Meta.fields` — IDOR: пользователь может подменить
+`company_id` на чужой в POST-запросе. Эти поля передаются через `__init__`
+из view-контекста, не из данных формы.
+
+ПЛОХО:
+```python
+class OrderForm(forms.ModelForm):
+    class Meta:
+        model = Order
+        fields = ["company", "amount", "notes"]   # company из POST — IDOR
+```
+
+ХОРОШО:
+```python
+class OrderCreateForm(forms.ModelForm):
+    class Meta:
+        model = Order
+        fields = ["amount", "notes"]   # company НЕ в полях формы
+
+    def __init__(self, *args, company=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.company = company          # получаем из view, не из POST
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        instance.company = self.company  # устанавливаем в save
+        if commit:
+            instance.save()
+        return instance
+```
+
+#### `clean_<field>()` для cross-field валидации
+
+ХОРОШО:
+```python
+class OrderCreateForm(forms.ModelForm):
+    def clean_amount(self):
+        amount = self.cleaned_data["amount"]
+        if amount <= 0:
+            raise forms.ValidationError("Сумма должна быть положительной.")
+        return amount
+
+    def clean(self):
+        cleaned = super().clean()
+        # cross-field: amount + currency должны быть согласованы
+        return cleaned
+```
 
 ### 7. AuditLog pattern
 

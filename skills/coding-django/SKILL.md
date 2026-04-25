@@ -241,7 +241,96 @@ orders = Order.objects.for_company(company).with_related()
 
 ### 4. Services layer
 
-_(заполняется в шаге 4)_
+#### Service принимает доменные объекты, не `request`
+
+Service — это чистая бизнес-логика. Он не знает об HTTP. Принимает модели
+и примитивы, возвращает модели или выбрасывает исключения. View передаёт
+в service только то, что нужно — не весь request.
+
+ПЛОХО:
+```python
+# service.py
+def create_order(request):
+    company = request.user.company          # service знает о HTTP
+    data = request.POST.get("amount")       # parsing тоже в service
+    ...
+```
+
+ХОРОШО:
+```python
+# service.py
+from django.core.exceptions import ValidationError
+
+def create_order(company, user, amount: Decimal, notes: str = "") -> Order:
+    """Создать заказ. Raises ValidationError если данные некорректны."""
+    if amount <= 0:
+        raise ValidationError("Сумма заказа должна быть положительной.")
+    order = Order.objects.create(company=company, created_by=user, amount=amount, notes=notes)
+    return order
+
+# view.py — тонкий
+def order_create_view(request):
+    form = OrderForm(request.POST)
+    if form.is_valid():
+        order = create_order(
+            company=request.user.company,
+            user=request.user,
+            **form.cleaned_data,
+        )
+        return redirect("orders:detail", pk=order.pk)
+```
+
+#### `transaction.atomic` на service-уровне
+
+Если service делает несколько write-операций — они должны быть атомарны.
+Декоратор `@transaction.atomic` проще чем контекстный менеджер, но
+контекстный менеджер точнее ограничивает границу транзакции.
+
+```python
+from django.db import transaction
+
+@transaction.atomic
+def fulfill_order(order: Order, fulfilled_by) -> Order:
+    order.status = OrderStatus.FULFILLED
+    order.fulfilled_by = fulfilled_by
+    order.save(update_fields=["status", "fulfilled_by", "updated_at"])
+
+    # Аудит — тоже в транзакции
+    AuditLog.objects.create(
+        company=order.company,
+        action="order_fulfilled",
+        actor=fulfilled_by,
+        object_id=order.pk,
+    )
+    return order
+```
+
+Для отложенных эффектов (отправка email, вебхуки) — `transaction.on_commit()`:
+
+```python
+@transaction.atomic
+def fulfill_order(order: Order, fulfilled_by) -> Order:
+    ...
+    transaction.on_commit(lambda: send_fulfillment_email.delay(order.pk))
+    return order
+```
+
+#### `ValidationError` для пользователя, `PermissionError` для доступа
+
+Разные типы ошибок — разные исключения. View знает как их перехватить.
+
+```python
+from django.core.exceptions import ValidationError, PermissionDenied
+
+def cancel_order(order: Order, cancelled_by) -> Order:
+    if order.company != cancelled_by.company:
+        raise PermissionDenied("Нет доступа к этому заказу.")
+    if order.status == OrderStatus.FULFILLED:
+        raise ValidationError("Выполненный заказ нельзя отменить.")
+    order.status = OrderStatus.CANCELLED
+    order.save(update_fields=["status", "updated_at"])
+    return order
+```
 
 ### 5. Views
 

@@ -420,11 +420,130 @@ logger.debug("API response status: %s", response.status_code)  # только с
 
 ### 7. Секреты и конфигурация
 
-_(заполняется в шаге 5)_
+#### Никаких hardcoded secrets в коде
+
+API ключи, пароли, токены, connection strings — не должны появляться в коде,
+даже в тестах. Попадание в git-историю необратимо (rewrite не помогает,
+если репо публичный или уже склонирован).
+
+ПЛОХО:
+```python
+DATABASE_URL = "postgresql://admin:secret123@localhost/mydb"
+API_KEY = "sk-1234567890abcdef"
+
+# в тестах — тоже плохо:
+client = SomeAPI(api_key="test-key-hardcoded")
+```
+
+ХОРОШО:
+```python
+import os
+
+DATABASE_URL = os.environ["DATABASE_URL"]   # fail-fast если нет
+API_KEY = os.environ["API_KEY"]
+```
+
+#### Fail-fast на обязательных переменных окружения
+
+`os.environ.get("KEY", "default")` в production — тихий сбой при неправильной
+конфигурации. Читай без default: если переменная обязательна — её отсутствие
+должно остановить сервис при старте.
+
+ПЛОХО:
+```python
+SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret")   # в prod "dev-secret" — дыра
+DB_HOST = os.getenv("DB_HOST", "localhost")               # в prod может быть не то
+```
+
+ХОРОШО:
+```python
+import os
+
+SECRET_KEY = os.environ["SECRET_KEY"]   # KeyError при старте — лучше, чем тихая дыра
+DB_HOST = os.environ["DB_HOST"]
+```
+
+#### `.env.example` в репо, `.env` в `.gitignore`
+
+ХОРОШО (структура репо):
+```
+.env.example    # в git — шаблон с пустыми значениями
+.env            # в .gitignore — реальные секреты
+```
+
+```bash
+# .env.example
+DATABASE_URL=
+SECRET_KEY=
+API_KEY=
+```
+
+---
 
 ### 8. Типизация
 
-_(заполняется в шаге 5)_
+#### Type hints на всех публичных функциях
+
+Публичный API без аннотаций — это неявный контракт. Аннотации позволяют
+mypy ловить ошибки статически, а IDE — давать автодополнение.
+
+ПЛОХО:
+```python
+def process_order(order_id, user, amount):   # нет аннотаций
+    ...
+
+def get_user(pk):                            # неясно что возвращает
+    ...
+```
+
+ХОРОШО:
+```python
+import uuid
+from decimal import Decimal
+
+def process_order(order_id: uuid.UUID, user_id: int, amount: Decimal) -> bool:
+    ...
+
+def get_user(pk: int) -> "User | None":     # явно — может вернуть None
+    ...
+```
+
+#### `X | None` вместо `Optional[X]` (Python 3.10+)
+
+`Optional[X]` — синоним `Union[X, None]`. В Python 3.10+ `X | None` чище и
+читаемее. В 3.9 и ниже — `Optional[X]` или `from __future__ import annotations`.
+
+ХОРОШО (Python 3.10+):
+```python
+def find_user(email: str) -> User | None:
+    ...
+
+def parse_date(raw: str) -> datetime | None:
+    ...
+```
+
+#### `Any` — последнее средство с обоснованием
+
+`Any` отключает проверку типов для этой переменной. Допустимо на границах
+с нетипизированным кодом, но должно быть обосновано комментарием.
+
+ПЛОХО:
+```python
+from typing import Any
+
+def process(data: Any) -> Any:   # Any везде = нет типизации вообще
+    ...
+```
+
+ХОРОШО:
+```python
+from typing import Any
+
+def deserialize(raw: bytes) -> Any:
+    # Any здесь потому что json.loads возвращает Union[dict, list, str, int, float, bool, None]
+    # и caller должен сам проверить тип
+    return json.loads(raw)
+```
 
 ### 9. Импорты
 

@@ -547,15 +547,142 @@ def deserialize(raw: bytes) -> Any:
 
 ### 9. Импорты
 
-_(заполняется в шаге 6)_
+#### Порядок: stdlib → third-party → local
+
+Стандарт `isort` и `PEP 8`: три блока, разделённые пустой строкой.
+Нарушение делает зависимости менее очевидными и мешает автоматическому
+форматированию.
+
+ПЛОХО:
+```python
+from myapp.models import User
+import os
+from django.db import models
+import uuid
+from myapp.services import create_user
+import json
+```
+
+ХОРОШО:
+```python
+import json                          # stdlib
+import os
+import uuid
+
+from django.db import models         # third-party
+
+from myapp.models import User        # local
+from myapp.services import create_user
+```
+
+#### Запрет `from module import *`
+
+Wildcard импорт загрязняет пространство имён непредсказуемым набором имён,
+скрывает откуда пришёл каждый символ, ломает статический анализ.
+
+ПЛОХО:
+```python
+from os.path import *
+from myapp.utils import *            # неясно что импортируется
+```
+
+ХОРОШО:
+```python
+from os.path import join, exists     # явный список
+from myapp.utils import format_date, slugify
+```
+
+---
 
 ### 10. Строки и форматирование
 
-_(заполняется в шаге 6)_
+#### f-strings предпочтительнее `.format()` и `%`
+
+f-strings (Python 3.6+) читаемее, быстрее и не требуют подсчёта позиционных
+аргументов. Исключение — логирование (см. раздел 6, lazy formatting).
+
+ПЛОХО:
+```python
+msg = "Hello, %s! You have %d messages." % (name, count)
+msg = "Hello, {}! You have {} messages.".format(name, count)
+```
+
+ХОРОШО:
+```python
+msg = f"Hello, {name}! You have {count} messages."
+```
+
+#### `str.join()` вместо `+=` в цикле
+
+Конкатенация строк через `+=` создаёт новый объект при каждой итерации —
+O(n²) по памяти. `join()` — один проход.
+
+ПЛОХО:
+```python
+result = ""
+for item in items:
+    result += item + ", "           # O(n²)
+```
+
+ХОРОШО:
+```python
+result = ", ".join(items)           # O(n)
+```
+
+---
 
 ### 11. Константы и magic numbers/strings
 
-_(заполняется в шаге 6)_
+#### Именованные константы вместо литералов
+
+Magic number или строка в условии — читатель не знает что это значит.
+Именованная константа документирует смысл.
+
+ПЛОХО:
+```python
+if response.status_code == 429:         # что такое 429?
+    time.sleep(60)                      # почему 60?
+
+if user.role == "admin":                # magic string
+    ...
+```
+
+ХОРОШО:
+```python
+HTTP_TOO_MANY_REQUESTS = 429
+RATE_LIMIT_BACKOFF_SECONDS = 60
+
+if response.status_code == HTTP_TOO_MANY_REQUESTS:
+    time.sleep(RATE_LIMIT_BACKOFF_SECONDS)
+```
+
+#### Enum для связанных значений
+
+Группа связанных констант — это Enum, не набор разрозненных переменных.
+Enum даёт исчерпывающий перебор, защиту от опечаток, автодополнение.
+
+ПЛОХО:
+```python
+STATUS_PENDING = "pending"
+STATUS_ACTIVE = "active"
+STATUS_CLOSED = "closed"
+
+if order.status == "actve":     # опечатка не поймана
+    ...
+```
+
+ХОРОШО:
+```python
+from enum import StrEnum
+
+class OrderStatus(StrEnum):
+    PENDING = "pending"
+    ACTIVE = "active"
+    CLOSED = "closed"
+
+if order.status == OrderStatus.ACTIVE:  # опечатка поймает IDE и mypy
+    ...
+```
 
 ### 12. Документация кода
 
